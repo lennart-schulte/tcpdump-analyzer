@@ -1,0 +1,7 @@
+
+- detect reordering longer than one RTT
+- reordering metric: milliseconds
+
+- dynamic threshold for connection interruption
+- distinguish interruptions on forward/backward path (uplink/downlink)
+
