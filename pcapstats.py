@@ -4,7 +4,8 @@
 
 # Script to calculate TCP reordering statistics.
 #
-# Copyright (C) 2009 - 2013 Lennart Schulte <lennart.schulte@rwth-aachen.de>
+# Copyright (C) 2009 - 2011 Lennart Schulte <lennart.schulte@rwth-aachen.de>
+# Copyright (C) 2012 - 2014 Lennart Schulte <lennart.schulte@aalto.fi>
 # 
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
