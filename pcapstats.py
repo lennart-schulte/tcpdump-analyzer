@@ -92,7 +92,7 @@ class Info:
                         if entry['flightsize'] > 0:
                             relreor = float(reoroffset)/entry['flightsize']
                             entry['reor_relative'].append(relreor)
-                    print "2", reoroffset, entry['flightsize'], "%0.2f"%(relreor), save_hole, max_acked, entry['sblocks']
+                    #print "2", reoroffset, entry['flightsize'], "%0.2f"%(relreor), save_hole, max_acked, entry['sblocks']
             else:
                 # SACKs retransmission
                 (rlen, rtsval, was_acked) = half['rexmit'][save_hole]
@@ -107,7 +107,7 @@ class Info:
                         if entry['flightsize'] > 0:
                             relreor = float(reoroffset)/entry['flightsize']
                             entry['reor_relative'].append(relreor)
-                    print "4", save_hole, reoroffset, entry['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(entry['disorder'])
+                    #print "4", save_hole, reoroffset, entry['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(entry['disorder'])
 
 
     def addConnection(self, ts, ip_hdr):
@@ -376,7 +376,7 @@ class Info:
                                             entry['reor_relative'].append(relreor)
                                         else:
                                             relreor = 0
-                                        print "1", reoroffset, entry['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts), hole, entry['sacked'], entry['sblocks']
+                                        #print "1", reoroffset, entry['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts), hole, entry['sacked'], entry['sblocks']
                                     break
                                 else:
                                     #first packet was retransmitted, add packet length and check again for new hole
@@ -478,7 +478,7 @@ class Info:
                             if last < new: # starts after last SACK block
                                 entry['sblocks'].append([sack_blocks[block],sack_blocks[block+1]])
 
-            else:
+            else: # len(entry['sblocks']) == 0
                 for block in range(0, len(sack_blocks), 2):
                     if sack_blocks[block] <= max(ack, entry['acked']):
                         #print datetime.fromtimestamp(ts), entry['acked'], sack_blocks[block]
@@ -540,7 +540,7 @@ class Info:
                                 if entry['flightsize'] > 0:
                                     relreor = float(reoroffset)/entry['flightsize']
                                     entry['reor_relative'].append(relreor)
-                            print "3", rseq, reoroffset, entry['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(entry['disorder'])
+                            #print "3", rseq, reoroffset, entry['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(entry['disorder'])
 
 
             if len(entry['sblocks']) == 0 and entry['disorder'] > 0:    # it was disorder, now there are no more SACK blocks -> disorder ended
@@ -629,7 +629,7 @@ class PcapInfo(): #Application):
     #        sys.exit(1)
 
 
-    def run(self, nice=False, filename=None, timelimit=10, netradar=True):
+    def run(self, nice=False, filename=None, timelimit=10, netradar=True, standalone=False):
         '''
         Go through all packets and get stats with Info
         nice: print nice output, otherwise dict
@@ -785,9 +785,10 @@ class PcapInfo(): #Application):
                     #print dumpdata
                     condata.append( dumpdata )
         if not nice:
-            print condata
-            #print json.dumps(condata[0], indent=4)
-            return condata
+            if standalone:
+                print json.dumps(condata[0], indent=4)
+            else:
+                return condata
 
 
 if __name__ == "__main__":
@@ -806,6 +807,6 @@ if __name__ == "__main__":
     #                            help="increase output verbosity")
     args = parser.parse_args()
 
-    PcapInfo().run(nice=(not args.json), filename=args.pcapfile, timelimit=args.timelimit, netradar=args.netradar)
+    PcapInfo().run(nice=(not args.json), filename=args.pcapfile, timelimit=args.timelimit, netradar=args.netradar, standalone=True)
     #PcapInfo().run(nice=True, filename=args.pcapfile, timelimit=args.timelimit, netradar=False)
 
