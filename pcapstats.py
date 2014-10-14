@@ -26,7 +26,7 @@ from datetime import datetime
 try:
     from netradarlogger.log import Log
 except:
-    from logging import info, debug, warn, error
+    import logging
 
 import json
 
@@ -75,7 +75,7 @@ class Info:
             relreor = -1
 
         e['reor_extents'].append([ts, reoroffset, relreor, reason])
-        #print reoroffset, e['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts)
+        logging.debug("addReorExtent: %s %s %s %s" %(reoroffset, e['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts)))
 
     def sackRetrans(self, newly_acked, half):
         # mark retransmissions as ACKed
@@ -95,7 +95,7 @@ class Info:
                 #reordering
                 if half:
                     reoroffset = (max_acked - save_hole) #in bytes for now. /half['mss'] #in packets
-                    #print "2", save_hole
+                    logging.debug("reor 2 %s", save_hole)
                     self.addReorExtent(half, ts, reoroffset, "sackHole")
                     half['reorder'] += 1
             else:
@@ -106,7 +106,7 @@ class Info:
                     entry['disorder_spurrexmit'] += 1
                     reoroffset = max_acked - save_hole
                     #print ack, rseq, reoroffset, entry['flightsize']
-                    #print "4", save_hole, datetime.fromtimestamp(entry['disorder']),
+                    logging.debug("reor 4 %s %s", save_hole, datetime.fromtimestamp(entry['disorder']))
                     self.addReorExtent(entry, ts, reoroffset, "rexmit")
 
 
@@ -125,7 +125,7 @@ class Info:
             try:
                 Log.w(msg)
             except:
-                warn(msg)
+                logging.warn(msg)
 
             return
 
@@ -367,7 +367,7 @@ class Info:
                                 if not half['rexmit'].has_key(hole[0]):
                                     #first packet in hole hasn't been retransmitted -> whole hole is reordered
                                     reoroffset = (entry['sacked'] - hole[0]) #in bytes for now. /half['mss'] #in packets
-                                    #print "1", hole
+                                    logging.debug("reor 1 %s", hole)
                                     self.addReorExtent(entry, ts, reoroffset, "sackHole")
                                     entry['reorder'] += 1
                                     break
@@ -430,7 +430,7 @@ class Info:
                         if sack_blocks[block] == entry['sblocks'][i][0] and sack_blocks[block+1] > entry['sblocks'][i][1]:
                             if i < len(entry['sblocks'])-1: #its not the last one
                                 save_hole = entry['sblocks'][i][1]
-                                #print "1", entry['sblocks'][i], save_hole
+                                logging.debug("reor 1 %s %s", entry['sblocks'][i], save_hole)
                             newly_acked = [entry['sblocks'][i][1]]
                             entry['sblocks'][i][1] = sack_blocks[block+1]
                             done = 1
@@ -439,7 +439,7 @@ class Info:
                         if sack_blocks[block] < entry['sblocks'][i][0] and sack_blocks[block+1] == entry['sblocks'][i][1] and done == 0:
                             save_hole = sack_blocks[block]
                             newly_acked = [save_hole]
-                            #print "2", entry['sblocks'][i], save_hole
+                            logging.debug("reor 2 %s %s", entry['sblocks'][i], save_hole)
                             entry['sblocks'][i][0] = sack_blocks[block]
                             done = 1
 
@@ -525,7 +525,7 @@ class Info:
                         if tsecr < rtsval and was_acked == 0:
                             reoroffset = max(ack, entry['sacked']) - rseq
                             #print ack, rseq, reoroffset, entry['flightsize']
-                            #print "3", rseq, datetime.fromtimestamp(entry['disorder']),
+                            logging.debug("reor 3 %s %s", rseq, datetime.fromtimestamp(entry['disorder']))
                             self.addReorExtent(entry, ts, reoroffset, "rexmit")
                             entry['reorder_rexmit'] += 1
                             entry['disorder_spurrexmit'] += 1
@@ -660,11 +660,11 @@ class PcapInfo(): #Application):
                 elif con['half']:
                     gtime = con['half']['last_ts'] - con['half']['con_start']
                 else:
-                    print "ERROR: no gtime"
+                    logging.warn("no gtime")
                     continue
 
                 if not con['half']:
-                    #print "ERROR: no two way connection"
+                    logging.warn("no two way connection")
                     continue
 
                 goodput = float(con['half']['bytes']*8)/(gtime*KILO) # in kbit/s
@@ -714,7 +714,7 @@ class PcapInfo(): #Application):
                         phases.append({'start': entry[0], 'duration': duration, 'rexmits': rexmits, 'rtos': rtos, 'spurious': spurious})
                     else:
                         reorderworexmit += 1
-                        #print "4", datetime.fromtimestamp(entry[0]), datetime.fromtimestamp(entry[1])
+                        logging.debug("reor 4 %s %s", datetime.fromtimestamp(entry[0]), datetime.fromtimestamp(entry[1]))
 
                 reorentry = []
                 for reor in con['reor_extents']:
@@ -797,10 +797,18 @@ if __name__ == "__main__":
             help="analyse only the first <time> seconds of the connection [default: %(default)s = analyse all]")
     parser.add_argument("-n", "--netradar", action="store_true",
             help="use Netradar ports to distinguish connections")
-    #parser.add_argument("-v", "--verbose", action="store_true",
-    #                            help="increase output verbosity")
+    parser.add_argument("-q", "--quiet", action="store_true",
+            help="decrease output verbosity")
+    parser.add_argument("-d", "--debug", action="store_true",
+            help="debug message output")
     args = parser.parse_args()
 
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    elif args.quiet:
+        logging.basicConfig(level=logging.WARN)
+    else:
+        logging.basicConfig(level=logging.INFO)
+
     PcapInfo().run(nice=(not args.json), filename=args.pcapfile, timelimit=args.timelimit, netradar=args.netradar, standalone=True)
-    #PcapInfo().run(nice=True, filename=args.pcapfile, timelimit=args.timelimit, netradar=False)
 
