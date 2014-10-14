@@ -65,6 +65,17 @@ class Info:
        else:
             return 0
 
+    def addReorExtent(self, e, ts, reoroffset, reason):
+        if reoroffset == 0:
+            return
+
+        if e['flightsize'] > 0:
+            relreor = float(reoroffset)/e['flightsize']
+        else:
+            relreor = -1
+
+        e['reor_extents'].append([ts, reoroffset, relreor, reason])
+        #print reoroffset, e['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts)
 
     def sackRetrans(self, newly_acked, half):
         # mark retransmissions as ACKed
@@ -83,16 +94,10 @@ class Info:
             if not half['rexmit'].has_key(save_hole):
                 #reordering
                 if half:
-                    half['reorder'] += 1
-                    #print "reor2"
                     reoroffset = (max_acked - save_hole) #in bytes for now. /half['mss'] #in packets
-                    if reoroffset > 0:
-                        entry['reor_offsets'].append(reoroffset)
-                        entry['reor_time'].append(ts)
-                        if entry['flightsize'] > 0:
-                            relreor = float(reoroffset)/entry['flightsize']
-                            entry['reor_relative'].append(relreor)
-                    #print "2", reoroffset, entry['flightsize'], "%0.2f"%(relreor), save_hole, max_acked, entry['sblocks']
+                    #print "2", save_hole
+                    self.addReorExtent(half, ts, reoroffset, "sackHole")
+                    half['reorder'] += 1
             else:
                 # SACKs retransmission
                 (rlen, rtsval, was_acked) = half['rexmit'][save_hole]
@@ -101,13 +106,8 @@ class Info:
                     entry['disorder_spurrexmit'] += 1
                     reoroffset = max_acked - save_hole
                     #print ack, rseq, reoroffset, entry['flightsize']
-                    if reoroffset > 0:
-                        entry['reor_offsets'].append(reoroffset)
-                        entry['reor_time'].append(ts)
-                        if entry['flightsize'] > 0:
-                            relreor = float(reoroffset)/entry['flightsize']
-                            entry['reor_relative'].append(relreor)
-                    #print "4", save_hole, reoroffset, entry['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(entry['disorder'])
+                    #print "4", save_hole, datetime.fromtimestamp(entry['disorder']),
+                    self.addReorExtent(entry, ts, reoroffset, "rexmit")
 
 
     def addConnection(self, ts, ip_hdr):
@@ -146,9 +146,10 @@ class Info:
         entry = Info.check(self,c)
         half = None
         if entry:
-            if not entry.has_key('half'):
+            if not entry.has_key('half') or entry['half'] == None:
                 half = Info.findOtherHalf(self, c)
                 entry['half'] = half
+                #print "set half", half, c
             else:
                 half = entry['half']
 
@@ -240,9 +241,8 @@ class Info:
             c['reorder'] = 0                # #reorderings due to closed SACK holes
             c['reorder_rexmit'] = 0         # #reordered segments (rexmits, tested with TSval)
             c['dreorder'] = 0               # #DSACKs accounting for reordering
-            c['reor_offsets'] = []          # list of reordering offsets
-            c['reor_time'] = []             # list of timestamps where reordering occured
-            c['reor_relative'] = []          # list of reordering offsets
+            c['reor_extents'] = []          # list of infos on reordering extents: [ts, abs.extent, rel.extent] 
+                                            #(rel.extent might be -1 for failed)
             c['recovery_point'] = 0
             c['flightsize'] = 0
             c['last_ts'] = ts               # timestamp of last processed segment (not TS-opt)
@@ -367,16 +367,9 @@ class Info:
                                 if not half['rexmit'].has_key(hole[0]):
                                     #first packet in hole hasn't been retransmitted -> whole hole is reordered
                                     reoroffset = (entry['sacked'] - hole[0]) #in bytes for now. /half['mss'] #in packets
-                                    if reoroffset > 0:
-                                        entry['reorder'] += 1
-                                        entry['reor_offsets'].append(reoroffset)
-                                        entry['reor_time'].append(ts)
-                                        if entry['flightsize'] > 0:
-                                            relreor = float(reoroffset)/entry['flightsize']
-                                            entry['reor_relative'].append(relreor)
-                                        else:
-                                            relreor = 0
-                                        #print "1", reoroffset, entry['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts), hole, entry['sacked'], entry['sblocks']
+                                    #print "1", hole
+                                    self.addReorExtent(entry, ts, reoroffset, "sackHole")
+                                    entry['reorder'] += 1
                                     break
                                 else:
                                     #first packet was retransmitted, add packet length and check again for new hole
@@ -530,17 +523,12 @@ class Info:
                     if rseq >= entry['acked'] and rseq < ack: # retransmission newly acked
                         #print half['rexmit'][rseq]
                         if tsecr < rtsval and was_acked == 0:
-                            entry['reorder_rexmit'] += 1
-                            entry['disorder_spurrexmit'] += 1
                             reoroffset = max(ack, entry['sacked']) - rseq
                             #print ack, rseq, reoroffset, entry['flightsize']
-                            if reoroffset > 0:
-                                entry['reor_offsets'].append(reoroffset)
-                                entry['reor_time'].append(ts)
-                                if entry['flightsize'] > 0:
-                                    relreor = float(reoroffset)/entry['flightsize']
-                                    entry['reor_relative'].append(relreor)
-                            #print "3", rseq, reoroffset, entry['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(entry['disorder'])
+                            #print "3", rseq, datetime.fromtimestamp(entry['disorder']),
+                            self.addReorExtent(entry, ts, reoroffset, "rexmit")
+                            entry['reorder_rexmit'] += 1
+                            entry['disorder_spurrexmit'] += 1
 
 
             if len(entry['sblocks']) == 0 and entry['disorder'] > 0:    # it was disorder, now there are no more SACK blocks -> disorder ended
@@ -571,12 +559,15 @@ class Info:
                     entry['high_len'] = tcp_data_len
                 else:
                     if not entry['rexmit'].has_key(seq):
+                        #print "new rexmit"
                         #paket is retransmit, store seq no and length
-                        length = tcp_data_len #ip_len - 40 - offset - 4
+                        length = tcp_data_len
                         entry['rexmit'][seq] = [length, tsval, 0] # payload length, timestamp value, acked?
 
                         if half:
+                            #print "check ret"
                             if half['disorder'] > 0:    # already in disorder
+                                #print "in disorder"
                                 if entry['sblocks'] > 0 and half['disorder_rto'] == 0:
                                     half['disorder_fret'] += 1
                                 else:
@@ -707,6 +698,7 @@ class PcapInfo(): #Application):
                 reorderworexmit = 0
                 phases = []
                 for entry in con['disorder_phases']:
+                    #print entry
                     duration = entry[1] - entry[0]
                     rexmits = entry[2]
                     rtos = entry[3]
@@ -724,13 +716,17 @@ class PcapInfo(): #Application):
                         reorderworexmit += 1
                         #print "4", datetime.fromtimestamp(entry[0]), datetime.fromtimestamp(entry[1])
 
+                reorentry = []
+                for reor in con['reor_extents']:
+                    reorentry.append({'ts': reor[0], 'extentAbs': reor[1], 'extentRel': reor[2], 'reason': reor[3]})
+
                 if nice == True:
                     # nice output
                     print "%s:%s - %s:%s --> %s pkts in %s s, MSS = %s, %0.2f kbit/s" \
                             %(con['src'],con['sport'],con['dst'],con['dport'],con['half']['all'],
                               gtime, con['half']['mss'], goodput)
                                                                           #;%s;%s;%s;%s;%s;%s;%s
-                    #                        ,con['reorder'],con['dreorder'],float(con['reorder']+con['dreorder'])/con['all'],con['reor_offsets'],\
+                    #                        ,con['reorder'],con['dreorder'],float(con['reorder']+con['dreorder'])/con['all'],\
                     #                         con['disorder_phases'], con['interruptions'], con['rcv_win'])
 
                     #print con['disorder_phases']
@@ -745,7 +741,6 @@ class PcapInfo(): #Application):
                             %(totalfastrectime, totalfastrecno, totalspurious, totalfastrecrto, totalfastrecrexmit)
                     print "Reorder: W/o retransmit = %s , Closed SACK holes = %s , Rexmits (TSval tested) = %s" \
                             %(reorderworexmit, con['reorder'], con['reorder_rexmit'])
-                    print "Reorder extends:", con['reor_offsets']
                     print "G: %0.2f ms/tick"%con['G']
                     print
                 else:
@@ -779,14 +774,13 @@ class PcapInfo(): #Application):
                     dumpdata['reorder']         = {'woRexmit': reorderworexmit,
                                                    'sackHoles': con['reorder'],
                                                    'rexmit': con['reorder_rexmit'],
-                                                   'extends': con['reor_offsets'],
-                                                   'relative': con['reor_relative'],
-                                                   'times': con['reor_time']}
+                                                   'extents': reorentry}
                     #print dumpdata
                     condata.append( dumpdata )
         if not nice:
             if standalone:
-                print json.dumps(condata[0], indent=4)
+                for conresult in condata:
+                    print json.dumps(conresult, indent=4)
             else:
                 return condata
 
