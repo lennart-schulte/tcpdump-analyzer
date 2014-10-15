@@ -280,6 +280,12 @@ class Info:
             Info.connections.append(c)
 
         else: # found old connection
+
+            # ACK reordering check
+            if not carries_data and ack < entry['acked']:
+                return
+
+            # time limit exceeded
             if (Info.timespan > 0 ) and (ts > entry['con_start']+Info.timespan):
                 if carries_data:
                     if half:
@@ -449,7 +455,7 @@ class Info:
                         if sack_blocks[block] < entry['sblocks'][i][0] and sack_blocks[block+1] == entry['sblocks'][i][1] and done == 0:
                             save_hole = sack_blocks[block]
                             newly_acked = [save_hole]
-                            logging.debug("reor 2 %s %s", entry['sblocks'][i], save_hole)
+                            #logging.debug("block 2 %s %s", entry['sblocks'][i], save_hole)
                             entry['sblocks'][i][0] = sack_blocks[block]
                             done = 1
 
