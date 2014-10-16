@@ -65,6 +65,15 @@ class Info:
        else:
             return 0
 
+    def sackHoleTs(self, e, seqnr):
+        # return the timestamp of the SACK hole the 'seq' falls in
+        # return -1 when not found
+        for h in e['reor_holes']:
+            if seqnr >= h[0] and seqnr < h[1]:
+                return h[2]
+        return -1
+
+
     def addReorExtent(self, e, ts, seqnr, reoroffset, reason):
         if reoroffset == 0:
             return
@@ -75,13 +84,12 @@ class Info:
             logging.warn("rel. reordering: no flightsize %s", seqnr)
             relreor = -1
 
-        reordelay = -1
-        for h in e['reor_holes']:
-            if seqnr >= h[0] and seqnr < h[1]:
-                reordelay = ts - h[2]
-        if reordelay == -1:
+        holeTs = self.sackHoleTs(e, seqnr)
+        if holeTs > -1:
+            reordelay = ts - holeTs
+        else:
+            reordelay = -1
             logging.warn("reor delay failed %s", seqnr)
-
 
         e['reor_extents'].append([ts, reoroffset, relreor, reason, reordelay])
         logging.debug("addReorExtent: %s %s %s %s %s" %(reoroffset, e['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts), reordelay))
@@ -104,12 +112,12 @@ class Info:
                 #reordering
                 if half:
                     reoroffset = (max_acked - save_hole) #in bytes for now. /half['mss'] #in packets
-                    logging.debug("reor 2 %s", save_hole)
+                    logging.debug("reor 5 %s", save_hole)
                     self.addReorExtent(half, ts, save_hole, reoroffset, "sackHole")
                     half['reorder'] += 1
             else:
                 # SACKs retransmission
-                (rlen, rtsval, was_acked) = half['rexmit'][save_hole]
+                (rlen, rtsval, was_acked, was_rto, holeTs, fs) = half['rexmit'][save_hole]
                 if tsecr < rtsval and was_acked == 0:
                     entry['reorder_rexmit'] += 1
                     entry['disorder_spurrexmit'] += 1
@@ -235,7 +243,7 @@ class Info:
             c['all'] = 0                    # count segments with payload
             c['bytes'] = 0                  # count payload bytes
             c['high'] = 0                   # highest sequence number
-            c['high_len'] = 0
+            c['high_len'] = 0               # size of last newly sent data
             c['mss'] = 0                    # highest seen payload length
             c['firstTSval'] = tsval
             if carries_data:
@@ -250,6 +258,7 @@ class Info:
             c['reorder'] = 0                # #reorderings due to closed SACK holes
             c['reorder_rexmit'] = 0         # #reordered segments (rexmits, tested with TSval)
             c['dreorder'] = 0               # #DSACKs accounting for reordering
+            c['dreor_extents'] = []         # separate list of reordering extents found with DSACK+TS
             c['reor_extents'] = []          # list of infos on reordering extents: [ts, abs.extent, rel.extent]
                                             #(rel.extent might be -1 for failed)
             c['reor_holes'] = []            # list of SACK holes, to determine beginning of reorder for reordering delay
@@ -268,14 +277,12 @@ class Info:
             for block in range(0, len(sack_blocks), 2):
                 c['sblocks'].append([sack_blocks[block],sack_blocks[block+1]])
                 c['disorder'] = ts
-            #c['old_sack'] = []
             c['rst'] = 0                    # seen a RST
             c['fin'] = 0                    # seen a FIN
             c['syn'] = 0                    # seen a SYN
             if flags[4]:
                 c['syn'] = 1
             c['rcv_win'] = []               # receiver windows for any ACK
-            c['G'] = 0                      # device specifig value for TS in [ms/tick]
 
             Info.connections.append(c)
 
@@ -334,23 +341,6 @@ class Info:
             if tsval != 0:
                 entry['ts_opt'] = 1 # seen a ts option on this connection
 
-            #if len(entry['interruptions']) == 0:
-            #    entry['istart'] = ts
-
-
-            if not carries_data and not entry['rst'] and not entry['fin']:
-                # if there hasn't been an ACK in some time -> connection interruption
-                #print ts - entry['last_ts'] #print every ACK inter arrival time
-                #if ts - entry['last_ts'] > 0.04: # 40ms == 0.04s
-                spurious = 0
-                if entry['interr_rto_tsval'] != 0 and tsecr < entry['interr_rto_tsval']:
-                    spurious = 1
-                entry['interruptions'].append([entry['last_ts'], ts, entry['interr_rexmits'], spurious])
-                entry['interr_rexmits'] = 0
-                entry['interr_rto_tsval'] = 0
-                    #print datetime.fromtimestamp(entry['last_ts']),datetime.fromtimestamp(ts),datetime.fromtimestamp(entry['istart'])
-            entry['last_ts'] = ts
-
 
             if entry and half:
                 # check if reorder can be detected with acked sack holes
@@ -391,22 +381,26 @@ class Info:
                                     #first packet was retransmitted, add packet length and check again for new hole
                                     hole[0] += half['rexmit'][hole[0]][0]
 
-                #dsack reordering detection
-                if dsack == 1:
-                    if half['rexmit'].has_key(sack_blocks[0]): #dsack acks a retransmitted segment
-                        half['dreorder'] += 1
-                    else:
-                        pass #TODO: packet duplication
-                        #dsack_done = 0
-                        #for sb in entry['sblocks']:
-                        #    if sack_blocks[0] >= sb[0] and sack_blocks[1] <= sb[1]: #dsack was sacked before
-                        #        half['dreorder'] += 1
-                        #        dsack_done = 1
-                        #        break
-                        #for sb in entry['old_sack']:
-                        #    if sack_blocks[0] >= sb[0] and sack_blocks[1] <= sb[1]: #dsack was sacked before
-                        #        half['dreorder'] += 1
-                        #        break
+                #DSACK reordering detection (for reordering > 1RTT)
+                if dsack == 1 and half and entry['ts_opt'] == 1:
+                    # make sure that reordering was not detected previously -> info is deleted if used (reor 3)
+                    if half and half['rexmit'].has_key(sack_blocks[0]): #DSACK acks a retransmitted segment
+                        (rlen, rtsval, was_acked, was_rto, holeTs, fs) = half['rexmit'][sack_blocks[0]]
+                        # make sure this was normal recovery, no RTO
+                        if not was_rto:
+                            entry['dreorder'] += 1
+
+                            reorAbs = max(entry['acked'], entry['sacked']) - sack_blocks[1]
+                            reorRel = -1
+                            if fs > -1:
+                                reorRel = float(reorAbs)/fs
+                            rdelay = -1
+                            if holeTs > -1:
+                                rdelay = ts - holeTs
+
+                            entry['dreor_extents'].append([ts, reorAbs, reorRel, rdelay])
+
+                            logging.debug("reor DSACK %s %s %s %s", sack_blocks[0], reorAbs, reorRel, rdelay)
 
             #process sack blocks
             #also includes reordering detection for sack holes closed by sack blocks
@@ -415,7 +409,6 @@ class Info:
                 done = 1
                 for block in entry['sblocks']: #delete sack blocks, which are lower than cumulative ack
                     if block[1] <= ack:
-                        #entry['old_sack'].append(block) #save old sack blocks for dsack reordering detection
                         entry['sblocks'].remove(block)
                         done = 0
                         break
@@ -455,7 +448,7 @@ class Info:
                         if sack_blocks[block] < entry['sblocks'][i][0] and sack_blocks[block+1] == entry['sblocks'][i][1] and done == 0:
                             save_hole = sack_blocks[block]
                             newly_acked = [save_hole]
-                            #logging.debug("block 2 %s %s", entry['sblocks'][i], save_hole)
+                            logging.debug("reor 2 %s %s", entry['sblocks'][i], save_hole)
                             entry['sblocks'][i][0] = sack_blocks[block]
                             done = 1
 
@@ -495,12 +488,13 @@ class Info:
                     entry['sblocks'].insert(0, [sack_blocks[block],sack_blocks[block+1]])
                 if len(entry['sblocks']) > 0:
                     entry['sacked'] = newly_sacked
-                    # there haven't been any SACK blocks, now there are new incoming -> start of disorder
-                    entry['disorder'] = ts
-                    if half and half['high'] > 0:
-                        entry['recovery_point'] = half['high'] + half['high_len']
-                        entry['flightsize'] = entry['recovery_point'] - ack
-                    logging.debug("disorder begin (new SACK blocks) %s %s %s %s", sack_blocks, datetime.fromtimestamp(ts), entry['recovery_point'], entry['flightsize'])
+                    if entry['interr_rexmits'] == 0: # not in RTO
+                        # there haven't been any SACK blocks, now there are new incoming -> start of disorder
+                        entry['disorder'] = ts
+                        if half and half['high'] > 0:
+                            entry['recovery_point'] = half['high'] + half['high_len']
+                            entry['flightsize'] = entry['recovery_point'] - ack
+                        logging.debug("disorder begin (new SACK blocks) %s %s %s %s", sack_blocks, datetime.fromtimestamp(ts), entry['recovery_point'], entry['flightsize'])
 
             if newly_sacked > entry['sacked']:
                 entry['sacked'] = newly_sacked
@@ -533,9 +527,10 @@ class Info:
             #print ack, entry['sblocks']
 
             # reordering detection for retransmitted packets
+            remove_rseq = []
             if ack > entry['acked'] and tsecr > 0 and entry['disorder'] > 0 and entry['disorder_rto'] == 0 and half:
                 for rseq in half['rexmit']:
-                    (rlen, rtsval, was_acked) = half['rexmit'][rseq]
+                    (rlen, rtsval, was_acked, was_rto, holeTs, fs) = half['rexmit'][rseq]
                     if rseq >= entry['acked'] and rseq < ack: # retransmission newly acked
                         #print half['rexmit'][rseq]
                         if tsecr < rtsval and was_acked == 0:
@@ -545,6 +540,10 @@ class Info:
                             self.addReorExtent(entry, ts, rseq, reoroffset, "rexmit")
                             entry['reorder_rexmit'] += 1
                             entry['disorder_spurrexmit'] += 1
+
+                            remove_rseq.append(rseq)
+            for rseq in remove_rseq:
+                del half['rexmit'][rseq] # remove already used infos
 
             # maintain list of SACK holes for calculation of reordering delay
             if not carries_data:
@@ -573,6 +572,19 @@ class Info:
                             break
                     if not exists: # new SACK hole found, save with ts
                         entry['reor_holes'].append([hole[0], hole[1], ts])
+
+
+            if not carries_data and not entry['rst'] and not entry['fin']:
+                # if there hasn't been an ACK in some time -> connection interruption
+                #print ts - entry['last_ts'] #print every ACK inter arrival time
+                spurious = 0
+                if entry['interr_rto_tsval'] != 0 and tsecr < entry['interr_rto_tsval']:
+                    spurious = 1
+                entry['interruptions'].append([entry['last_ts'], ts, entry['interr_rexmits'], spurious])
+                entry['interr_rexmits'] = 0
+                entry['interr_rto_tsval'] = 0
+                    #print datetime.fromtimestamp(entry['last_ts']),datetime.fromtimestamp(ts),datetime.fromtimestamp(entry['istart'])
+            entry['last_ts'] = ts
 
 
             if len(entry['sblocks']) == 0 and entry['disorder'] > 0:    # it was disorder, now there are no more SACK blocks -> disorder ended
@@ -608,7 +620,21 @@ class Info:
                         #print "new rexmit"
                         #paket is retransmit, store seq no and length
                         length = tcp_data_len
-                        entry['rexmit'][seq] = [length, tsval, 0] # payload length, timestamp value, acked?
+
+                        # rto, holeTs and fs are needed for reordering > 1RTT with DSACK
+                        holeTs = -1
+                        fs = -1
+                        if half:
+                            holeTs = self.sackHoleTs(half, seq)
+                            fs = half['flightsize']
+                        rto = 0
+                        if half and (half['interr_rexmits'] > 0 or half['disorder_rto'] > 0): # in RTO
+                            rto = 1
+                        # if only one or two packets are SACKed and then RTO expires this happens
+                        if half and half['sacked'] > 0 and seq >= half['sacked']:
+                            rto = 1
+                                              # seg len, ts, acked?, rto?, rdelay ts, flightsize
+                        entry['rexmit'][seq] = [length, tsval, 0,    rto,  holeTs,    fs]
 
                         if half:
                             #print "check ret"
@@ -624,10 +650,13 @@ class Info:
                                 half['interr_rexmits'] += 1
                                 if half['interr_rto_tsval'] == 0:
                                     half['interr_rto_tsval'] = tsval
+                                entry['rexmit'][seq][3] = 1 #mark as RTO
                                 #print "rto+1 not in disorder", seq, ack, tcp_data_len 
-                                logging.debug("disorder begin (RTO) %s", datetime.fromtimestamp(ts))
+                                logging.debug("RTO (timeout) %s", datetime.fromtimestamp(ts))
                     else:
                         # the pkt was rexmited previously -> RTO
+                        logging.debug("RTO (2nd rexmit) %s", datetime.fromtimestamp(ts))
+                        entry['rexmit'][seq][3] = 1 #mark as RTO
                         if half:
                             if half['disorder'] > 0:
                                 half['disorder_rto'] += 1
@@ -690,12 +719,10 @@ class PcapInfo(): #Application):
             info.addConnection(ts, eth.data)
 
         # ---- output ----
-        #print "Src;sport;Dst;dport;all;reorder;dreorder;preor;reoroffsets(numbers);phases(begin,end,rexmits);interruptions(begin,end);rcv_wnd(ts,value)"
         KILO = 1024
         condata = []
         #print len(info.connections)
         for con in info.connections:
-            #print con['src'], con['sport'], con['dst'], con['dport'], con['all']
             # netradar is not used rely on data transmitted, netradar setup -> use server port numbers
             if ((not netradar) and (con['half']) and (con['half']['all'] > 0)) \
                 or ((netradar) and (con['dport'] in [6007,6078])):
@@ -765,18 +792,15 @@ class PcapInfo(): #Application):
                 reorentry = []
                 for reor in con['reor_extents']:
                     reorentry.append({'ts': reor[0], 'extentAbs': reor[1], 'extentRel': reor[2], 'reason': reor[3], 'reorDelay': reor[4]})
+                dreorentry = []
+                for d in con['dreor_extents']:
+                    dreorentry.append({'ts': d[0], 'extentAbs': d[1], 'extentRel': d[2], 'reorDelay': d[3]})
 
                 if nice == True:
                     # nice output
                     print "%s:%s - %s:%s --> %s pkts in %s s, MSS = %s, %0.2f kbit/s" \
                             %(con['src'],con['sport'],con['dst'],con['dport'],con['half']['all'],
                               gtime, con['half']['mss'], goodput)
-                                                                          #;%s;%s;%s;%s;%s;%s;%s
-                    #                        ,con['reorder'],con['dreorder'],float(con['reorder']+con['dreorder'])/con['all'],\
-                    #                         con['disorder_phases'], con['interruptions'], con['rcv_win'])
-
-                    #print con['disorder_phases']
-                    #print con['interruptions']
                     print "Options:", \
                             "SACK = %s," %('1' if con['sack'] > 0 else '0'), \
                             "DSACK = %s," %('1' if con['dsack'] > 0 else '0'), \
@@ -785,9 +809,8 @@ class PcapInfo(): #Application):
                             %(totalconinterrtime, totalconinterrno, withrto, rtospurious, goodputwointerr)
                     print "Fast Recovery time: %0.2f s ( %s phases, %s spurious, %s with RTOs, %s total frets )" \
                             %(totalfastrectime, totalfastrecno, totalspurious, totalfastrecrto, totalfastrecrexmit)
-                    print "Reorder: W/o retransmit = %s , Closed SACK holes = %s , Rexmits (TSval tested) = %s" \
-                            %(reorderworexmit, con['reorder'], con['reorder_rexmit'])
-                    print "G: %0.2f ms/tick"%con['G']
+                    print "Reorder: W/o retransmit = %s , Closed SACK holes = %s , Rexmits (TSval tested) = %s , DSACK+TS = %s" \
+                            %(reorderworexmit, con['reorder'], con['reorder_rexmit'], con['dreorder'])
                     print
                 else:
                     # return json
@@ -820,7 +843,9 @@ class PcapInfo(): #Application):
                     dumpdata['reorder']         = {'woRexmit': reorderworexmit,
                                                    'sackHoles': con['reorder'],
                                                    'rexmit': con['reorder_rexmit'],
-                                                   'extents': reorentry}
+                                                   'extents': reorentry,
+                                                   'dsackts': con['dreorder'],
+                                                   'dextents': dreorentry}
                     #print dumpdata
                     condata.append( dumpdata )
         if not nice:
