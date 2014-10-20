@@ -107,7 +107,7 @@ class Info:
         # reorder detection for SACKed holes
         max_acked = max(entry['sacked'], newly_sacked)
 
-        if save_hole > 0 and save_hole < entry['sacked'] and entry['disorder_rto'] == 0:
+        if save_hole > 0 and save_hole < entry['sacked'] and entry['disorder_rto'] == 0 and half:
             if not half['rexmit'].has_key(save_hole):
                 #reordering
                 if half:
@@ -392,7 +392,7 @@ class Info:
 
                             reorAbs = max(entry['acked'], entry['sacked']) - sack_blocks[1]
                             reorRel = -1
-                            if fs > -1:
+                            if fs > 0:
                                 reorRel = float(reorAbs)/fs
                             rdelay = -1
                             if holeTs > -1:
@@ -672,28 +672,7 @@ class Info:
 
 
 
-class PcapInfo(): #Application):
-    #def __init__(self):
-    #    Application.__init__(self)
-
-        # initialization of the option parser
-    #    usage = "usage: %prog <Pcap file>\nOutput: infos about reordering"
-    #    self.parser.set_usage(usage)
-        #self.parser.set_defaults(opt1 = Bool, opt2 = 'str')
-
-        #self.parser.add_option("-s", "--long", metavar = "VAR",
-        #                       action = "store", dest = "var",
-        #                       help = "Help text to be shown [default: %default]")
-
-    #def set_option(self):
-    #    """Set the options"""
-
-    #    Application.set_option(self)
-
-    #    if len(self.args) == 0:
-    #        error("Pcap file must be given!")
-    #        sys.exit(1)
-
+class PcapInfo(): 
 
     def run(self, nice=False, filename=None, timelimit=10, netradar=True, standalone=False):
         '''
@@ -703,15 +682,19 @@ class PcapInfo(): #Application):
         '''
         info = Info(timelimit=timelimit)
 
+        failed = 1
         if filename != None and os.path.isfile(filename):
-            self.packets = dpkt.pcap.Reader(open(filename,'rb'))
-        else:
-        #    self.packets = dpkt.pcap.Reader(open(self.args[0],'rb'))
+            try:
+                self.packets = dpkt.pcap.Reader(open(filename,'rb'))
+                failed = 0
+            except:
+                pass
+        if failed:
             msg = "No pcap file to process."
             try:
                 Log.e(msg)
             except:
-                error(msg)
+                logging.error(msg)
             return
 
         for ts, buf in self.packets:
@@ -726,6 +709,10 @@ class PcapInfo(): #Application):
             # netradar is not used rely on data transmitted, netradar setup -> use server port numbers
             if ((not netradar) and (con['half']) and (con['half']['all'] > 0)) \
                 or ((netradar) and (con['dport'] in [6007,6078])):
+                if not con.has_key('half') or not con['half']:
+                    logging.warn("no two way connection")
+                    continue
+
                 # goodput
                 goodput = 0
                 if Info.timespan > 0:
@@ -734,10 +721,6 @@ class PcapInfo(): #Application):
                     gtime = con['half']['last_ts'] - con['half']['con_start']
                 else:
                     logging.warn("no gtime")
-                    continue
-
-                if not con['half']:
-                    logging.warn("no two way connection")
                     continue
 
                 goodput = float(con['half']['bytes']*8)/(gtime*KILO) # in kbit/s
