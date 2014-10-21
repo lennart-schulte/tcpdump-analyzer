@@ -113,8 +113,8 @@ class Info:
                 if half:
                     reoroffset = (max_acked - save_hole) #in bytes for now. /half['mss'] #in packets
                     logging.debug("reor 5 %s", save_hole)
-                    self.addReorExtent(half, ts, save_hole, reoroffset, "sackHole")
-                    half['reorder'] += 1
+                    self.addReorExtent(entry, ts, save_hole, reoroffset, "sackHole")
+                    entry['reorder'] += 1
             else:
                 # SACKs retransmission
                 (rlen, rtsval, was_acked, was_rto, holeTs, fs, r) = half['rexmit'][save_hole]
