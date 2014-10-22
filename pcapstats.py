@@ -529,7 +529,6 @@ class Info:
             #print ack, entry['sblocks']
 
             # reordering detection for retransmitted packets
-            remove_rseq = []
             if ack > entry['acked'] and tsecr > 0 and entry['disorder'] > 0 and entry['disorder_rto'] == 0 and half:
                 for rseq in half['rexmit']:
                     (rlen, rtsval, was_acked, was_rto, holeTs, fs, r) = half['rexmit'][rseq]
@@ -707,21 +706,23 @@ class PcapInfo():
         condata = []
         #print len(info.connections)
         for con in info.connections:
+            if not con.has_key('half') or not con['half']:
+                logging.warn("no two way connection (%s:%s - %s:%s)\n", con['src'], con['sport'], con['dst'], con['dport'])
+                continue
+
             # netradar is not used rely on data transmitted, netradar setup -> use server port numbers
             if ((not netradar) and (con['half']) and (con['half']['all'] > 0)) \
                 or ((netradar) and (con['dport'] in [6007,6078])):
-                if not con.has_key('half') or not con['half']:
-                    logging.warn("no two way connection")
-                    continue
 
                 # goodput
-                goodput = 0
+                gtime = 0
                 if Info.timespan > 0:
                     gtime = Info.timespan # length of connection
-                elif con['half']:
-                    gtime = con['half']['last_ts'] - con['half']['con_start']
                 else:
-                    logging.warn("no gtime")
+                    gtime = con['half']['last_ts'] - con['half']['con_start']
+
+                if gtime <= 0:
+                    logging.warn("no duration (%s:%s - %s:%s)\n", con['src'], con['sport'], con['dst'], con['dport'])
                     continue
 
                 goodput = float(con['half']['bytes']*8)/(gtime*KILO) # in kbit/s
