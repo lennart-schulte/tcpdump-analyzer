@@ -92,7 +92,7 @@ class Info:
             logging.warn("reor delay failed %s", seqnr)
 
         e['reor_extents'].append([ts, reoroffset, relreor, reason, reordelay])
-        logging.debug("addReorExtent: %s %s %s %s %s" %(reoroffset, e['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts), reordelay))
+        logging.debug("addReorExtent: %s %s %s %s %s", reoroffset, e['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts), reordelay)
 
     def sackRetrans(self, newly_acked, half):
         # mark retransmissions as ACKed
@@ -783,20 +783,20 @@ class PcapInfo():
 
                 if nice == True:
                     # nice output
-                    print "%s:%s - %s:%s --> %s pkts in %s s, MSS = %s, %0.2f kbit/s" \
+                    print ("%s:%s - %s:%s --> %s pkts in %0.2f s, MSS = %s, %0.2f kbit/s" \
                             %(con['src'],con['sport'],con['dst'],con['dport'],con['half']['all'],
-                              gtime, con['half']['mss'], goodput)
-                    print "Options:", \
-                            "SACK = %s," %('1' if con['sack'] > 0 else '0'), \
-                            "DSACK = %s," %('1' if con['dsack'] > 0 else '0'), \
-                            "TS = %s" %con['ts_opt']
-                    print "Connection Interruption time: %0.2f s ( %s interruptions, %s with RTOs, %s spurious ) --> %0.2f kbit/s" \
-                            %(totalconinterrtime, totalconinterrno, withrto, rtospurious, goodputwointerr)
-                    print "Fast Recovery time: %0.2f s ( %s phases, %s spurious, %s with RTOs, %s total frets )" \
-                            %(totalfastrectime, totalfastrecno, totalspurious, totalfastrecrto, totalfastrecrexmit)
-                    print "Reorder: W/o retransmit = %s , Closed SACK holes = %s , Rexmits (TSval tested) = %s , DSACK+TS = %s" \
-                            %(reorderworexmit, con['reorder'], con['reorder_rexmit'], con['dreorder'])
-                    print
+                              gtime, con['half']['mss'], goodput))
+                    print ("Options: SACK = %s, DSACK = %s, TS = %s" \
+                            %('1' if con['sack'] > 0 else '0', \
+                              '1' if con['dsack'] > 0 else '0', \
+                              con['ts_opt']))
+                    print ("Connection Interruption time: %0.2f s ( %s interruptions, %s with RTOs, %s spurious ) --> %0.2f kbit/s" \
+                            %(totalconinterrtime, totalconinterrno, withrto, rtospurious, goodputwointerr))
+                    print ("Fast Recovery time: %0.2f s ( %s phases, %s spurious, %s with RTOs, %s total frets )" \
+                            %(totalfastrectime, totalfastrecno, totalspurious, totalfastrecrto, totalfastrecrexmit))
+                    print ("Reorder: W/o retransmit = %s , Closed SACK holes = %s , Rexmits (TSval tested) = %s , DSACK+TS = %s" \
+                            %(reorderworexmit, con['reorder'], con['reorder_rexmit'], con['dreorder']))
+                    print ("")
                 else:
                     # return json
                     dumpdata = {}
@@ -836,21 +836,22 @@ class PcapInfo():
         if not nice:
             if standalone:
                 for conresult in condata:
-                    print json.dumps(conresult, indent=4)
+                    print (json.dumps(conresult, indent=4))
             else:
                 return condata
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Parses PCAP files and extracts information like connection \
-                                                  interruptions, retransmission phases and unnecessary retransmissions.")
+    parser = argparse.ArgumentParser(description=
+                "Parses PCAP files and extracts information from TCP connections \
+                 about connection interruptions, recovery phases and reordering.")
     parser.add_argument("pcapfile", type=str,
             help="pcap file to analyse")
     parser.add_argument("-j", "--json", action="store_true",
             help="output in JSON format")
     parser.add_argument("-t", "--timelimit", type=float, default=0,
-            help="analyse only the first <time> seconds of the connection [default: %(default)s = analyse all]")
+            help="analyse only the first <TIMELIMIT> seconds of the connection [default: %(default)s = analyse all]")
     parser.add_argument("-n", "--netradar", action="store_true",
             help="use Netradar ports to distinguish connections")
     parser.add_argument("-q", "--quiet", action="store_true",
