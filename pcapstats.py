@@ -396,9 +396,13 @@ class Info:
                             reorRel = -1
                             if fs > 0:
                                 reorRel = float(reorAbs)/fs
+                            else:
+                                logging.warn("DSACK rel. reordering: no flightsize %s", sack_blocks[0])
                             rdelay = -1
                             if holeTs > -1:
                                 rdelay = ts - holeTs
+                            else:
+                                logging.warn("DSACK reor delay failed %s", sack_blocks[0])
 
                             entry['dreor_extents'].append([ts, reorAbs, reorRel, rdelay])
 
@@ -617,26 +621,24 @@ class Info:
                     entry['high_len'] = tcp_data_len
                 else:
                     if not entry['rexmit'].has_key(seq):
-                        #print "new rexmit"
-                        #paket is retransmit, store seq no and length
-                        length = tcp_data_len
-
-                        # rto, holeTs and fs are needed for reordering > 1RTT with DSACK
-                        holeTs = -1
-                        fs = -1
                         if half:
+                            #print "new rexmit"
+                            #paket is retransmit, store seq no and length
+                            length = tcp_data_len
+
+                            # rto, holeTs and fs are needed for reordering > 1RTT with DSACK
                             holeTs = self.sackHoleTs(half, seq)
                             fs = half['flightsize']
-                        rto = 0
-                        if half and (half['interr_rexmits'] > 0 or half['disorder_rto'] > 0): # in RTO
-                            rto = 1
-                        # if only one or two packets are SACKed and then RTO expires this happens
-                        if half and half['sacked'] > 0 and seq >= half['sacked']:
-                            rto = 1
-                                              # seg len, ts, acked?, rto?, rdelay ts, flightsize, reordered?
-                        entry['rexmit'][seq] = [length, tsval, 0,    rto,  holeTs,    fs,         0]
 
-                        if half:
+                            rto = 0
+                            if half['interr_rexmits'] > 0 or half['disorder_rto'] > 0: # in RTO
+                                rto = 1
+                            # if only one or two packets are SACKed and then RTO expires this happens
+                            if half['sacked'] > 0 and seq >= half['sacked']:
+                                rto = 1
+                                                  # seg len, ts, acked?, rto?, rdelay ts, flightsize, reordered?
+                            entry['rexmit'][seq] = [length, tsval, 0,    rto,  holeTs,    fs,         0]
+
                             #print "check ret"
                             if half['disorder'] > 0:    # already in disorder
                                 #print "in disorder"
