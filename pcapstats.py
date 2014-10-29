@@ -91,7 +91,7 @@ class Info:
             reordelay = -1
             logging.warn("reor delay failed %s", seqnr)
 
-        e['reor_extents'].append([ts, reoroffset, relreor, reason, reordelay])
+        e['reor_extents'].append([ts, reoroffset, relreor, reason, reordelay, holeTs])
         logging.debug("addReorExtent: %s %s %s %s %s", reoroffset, e['flightsize'], "%0.2f"%(relreor), datetime.fromtimestamp(ts), reordelay)
 
     def sackRetrans(self, newly_acked, half):
@@ -404,7 +404,7 @@ class Info:
                             else:
                                 logging.warn("DSACK reor delay failed %s", sack_blocks[0])
 
-                            entry['dreor_extents'].append([ts, reorAbs, reorRel, rdelay])
+                            entry['dreor_extents'].append([ts, reorAbs, reorRel, rdelay, holeTs])
 
                             logging.debug("reor DSACK %s %s %s %s %s", sack_blocks[0], reorAbs, reorRel, rdelay, datetime.fromtimestamp(ts))
 
@@ -757,6 +757,7 @@ class PcapInfo():
                 totalspurious = 0
                 reorderworexmit = 0
                 phases = []
+                dphases = []
                 for entry in con['disorder_phases']:
                     #print entry
                     duration = entry[1] - entry[0]
@@ -775,13 +776,14 @@ class PcapInfo():
                     else:
                         reorderworexmit += 1
                         logging.debug("reor 4 %s %s", datetime.fromtimestamp(entry[0]), datetime.fromtimestamp(entry[1]))
+                        dphases.append({'start': entry[0], 'duration': duration})
 
                 reorentry = []
                 for reor in con['reor_extents']:
-                    reorentry.append({'ts': reor[0], 'extentAbs': reor[1], 'extentRel': reor[2], 'reason': reor[3], 'reorDelay': reor[4]})
+                    reorentry.append({'ts': reor[0], 'extentAbs': reor[1], 'extentRel': reor[2], 'reason': reor[3], 'reorDelay': reor[4], 'holeTs': reor[5]})
                 dreorentry = []
                 for d in con['dreor_extents']:
-                    dreorentry.append({'ts': d[0], 'extentAbs': d[1], 'extentRel': d[2], 'reorDelay': d[3]})
+                    dreorentry.append({'ts': d[0], 'extentAbs': d[1], 'extentRel': d[2], 'reorDelay': d[3], 'holeTs': d[4]})
 
                 if nice == True:
                     # nice output
@@ -832,7 +834,8 @@ class PcapInfo():
                                                    'rexmit': con['reorder_rexmit'],
                                                    'extents': reorentry,
                                                    'dsackts': con['dreorder'],
-                                                   'dextents': dreorentry}
+                                                   'dextents': dreorentry,
+                                                   'disorder': dphases}
                     #print dumpdata
                     condata.append( dumpdata )
         if not nice:
