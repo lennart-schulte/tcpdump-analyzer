@@ -307,7 +307,7 @@ class Info:
                     if ack > entry['acked']: # for RTOs the above is not sufficient
                         # begin and end of disorder phase, and number of frets/rtos
                         spur = (1 if e['disorder_spurrexmit'] == e['disorder_fret'] else 0)
-                        e['disorder_phases'].append([e['disorder'], ts, e['disorder_fret'], e['disorder_rto'], spur])
+                        e['disorder_phases'].append([e['disorder'], ts, e['disorder_fret'], e['disorder_rto'], spur,  e['disorder_spurrexmit']])
                         #print datetime.fromtimestamp(ts)
                         e['disorder'] = 0
                         e['disorder_fret'] = 0
@@ -407,6 +407,14 @@ class Info:
                             entry['dreor_extents'].append([ts, reorAbs, reorRel, rdelay, holeTs])
 
                             logging.debug("reor DSACK %s %s %s %s %s", sack_blocks[0], reorAbs, reorRel, rdelay, datetime.fromtimestamp(ts))
+                            # update infos in corresponding disorder phase
+                            #entry['disorder_phases'].append([entry['disorder'], ts, entry['disorder_fret'], entry['disorder_rto'], spur,  entry['disorder_spurrexmit']])
+                            for i, d in enumerate(entry['disorder_phases']):
+                                if holeTs >= d[0] and holeTs <= d[1]:
+                                    entry['disorder_phases'][i][5] += 1
+                                    if entry['disorder_phases'][i][5] == entry['disorder_phases'][i][2]:
+                                        entry['disorder_phases'][i][4] = 1
+
 
             #process sack blocks
             #also includes reordering detection for sack holes closed by sack blocks
@@ -596,7 +604,7 @@ class Info:
                     # begin and end of disorder phase, and number of frets/rtos
                     spur = (1 if entry['disorder_spurrexmit'] == entry['disorder_fret'] else 0)
 
-                    entry['disorder_phases'].append([entry['disorder'], ts, entry['disorder_fret'], entry['disorder_rto'], spur])
+                    entry['disorder_phases'].append([entry['disorder'], ts, entry['disorder_fret'], entry['disorder_rto'], spur,  entry['disorder_spurrexmit']])
 
                     entry['disorder'] = 0
                     entry['disorder_fret'] = 0
