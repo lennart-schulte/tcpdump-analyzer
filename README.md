@@ -1,5 +1,8 @@
 tcpdump-analyzer
 ================
+Python tool to analyze pcap files with TCP connections for recovery, interruptions and reordering. See [Wiki](https://github.com/lennart-schulte/tcpdump-analyzer/wiki) for more information and publications.
+
+Help:
 ```
 usage: pcapstats.py [-h] [-j] [-t TIMELIMIT] [-n] [-q] [-d] pcapfile
 
