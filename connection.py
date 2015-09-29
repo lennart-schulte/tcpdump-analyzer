@@ -64,6 +64,8 @@ class Connection():
         self.syn = 0                    # seen a SYN
         self.rcv_win = []               # receiver windows for any ACK
 
+        self.tput_samples = []          # samples of tput in intervals [start, end, bytes]
+
         if p != None:
             self.load(p)
 

@@ -31,6 +31,7 @@ from connectionlist import ConnectionList
 from processreor import Reorder
 from processinterr import Interruption
 from processrecov import Recovery
+from tputsamples import TputSamples
 
 
 class ProcessPkt:
@@ -43,6 +44,7 @@ class ProcessPkt:
         self.reor   = Reorder()
         self.interr = Interruption()
         self.recov  = Recovery()
+        self.tput  = TputSamples()
 
 
     def sackRetrans(self, newly_acked, half):
@@ -312,9 +314,10 @@ class ProcessPkt:
         self.reor.detectionSack(con, p)
         self.reor.detectionDsack(con, p)
 
+        # throughput sampling
+        self.tput.check(con, p)
 
         self.updateSackScoreboard(con, p)
-
 
         self.reor.detectionRetrans(con, p)
         self.reor.maintainSackHoles(con, p)
@@ -386,6 +389,12 @@ class PcapInfo():
                     continue
 
                 goodput = float(con.half.bytes*8)/(gtime*KILO) # in kbit/s
+
+                tputsamples = []
+                for entry in con.tput_samples:
+                    tputsamples.append({"start": entry[0],
+                                        "end":   entry[1],
+                                        "bytes": entry[2]})
 
                 # interruptions
                 totalconinterrtime = 0
@@ -475,7 +484,7 @@ class PcapInfo():
                     dumpdata['options']         = {'sack': 1 if con.sack > 0 else 0,
                                                    'dsack': 1 if con.dsack > 0 else 0,
                                                    'ts': con.ts_opt}
-                    dumpdata['interruptions']   = {'minInterruption': Info.coninterrtime,
+                    dumpdata['interruptions']   = {'minInterruption': self.pp.coninterrtime,
                                                    'time': totalconinterrtime,
                                                    'number': totalconinterrno,
                                                    'withRto': withrto,
@@ -494,8 +503,11 @@ class PcapInfo():
                                                    'dsackts': con.dreorder,
                                                    'dextents': dreorentry,
                                                    'disorder': dphases}
+                    dumpdata["tputsamples"]	= tputsamples
+
                     #print dumpdata
                     condata.append( dumpdata )
+
         if not self.nice:
             if self.standalone:
                 for conresult in condata:
