@@ -63,14 +63,14 @@ class ProcessPkt:
             return True
 
         # time limit exceeded
-        if (self.timelimit > 0 ) and (ts > con.con_start+self.timelimit):
+        if (self.timelimit > 0 ) and (pkt.ts > con.con_start+self.timelimit):
             if pkt.carries_data:
                 if con.half:
                     e = con.half
                 else:
                     return True
             else:
-                e = entry
+                e = con
             self.recov.checkEnd(e, pkt)
             return True
         return False
@@ -348,7 +348,6 @@ class PcapInfo():
         self.standalone = standalone
 
         self.run()
-        self.output()
 
     def run(self):
         '''
@@ -559,5 +558,5 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(level=logging.INFO)
 
-    PcapInfo(nice=(not args.json), filename=args.pcapfile, timelimit=args.timelimit, netradar=args.netradar, standalone=True)
+    PcapInfo(nice=(not args.json), filename=args.pcapfile, timelimit=args.timelimit, netradar=args.netradar, standalone=True).output()
 
