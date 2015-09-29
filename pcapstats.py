@@ -24,14 +24,14 @@ from datetime import datetime
 import logging
 import json
 
-from packet import Packet
-from connection import Connection
-from connectionlist import ConnectionList
+from structures.packet import Packet
+from structures.connection import Connection
+from structures.connectionlist import ConnectionList
 
-from processreor import Reorder
-from processinterr import Interruption
-from processrecov import Recovery
-from tputsamples import TputSamples
+from events.processreor import Reorder
+from events.processinterr import Interruption
+from events.processrecov import Recovery
+from events.tputsamples import TputSamples
 
 
 class ProcessPkt:

@@ -19,9 +19,6 @@
 from datetime import datetime
 import logging
 
-import packet
-import connection
-
 class Reorder():
     '''
     Provides functions for detecting reordering.

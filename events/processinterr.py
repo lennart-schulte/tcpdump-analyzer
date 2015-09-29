@@ -18,9 +18,6 @@
 
 from datetime import datetime
 
-from connection import Connection
-from packet import Packet
-
 class Interruption():
     def __init__(self, enable=True):
         self.enable = True

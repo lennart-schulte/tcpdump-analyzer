@@ -19,9 +19,6 @@
 from datetime import datetime
 import logging
 
-from packet import Packet
-from connection import Connection
-
 class Recovery():
     def __init__(self, enable=True):
         self.enable = enable
