@@ -1,22 +1,20 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim:softtabstop=4:shiftwidth=4:expandtab
+
+# Script to calculate TCP reordering statistics.
 #
-# Copyright (C) 2009-2015 Lennart Schulte <lennart.schulte@aalto.fi>
-# Copyright (C) 2014-2015 Alexander Zimmermann <alexander.zimmermann@netapp.com>
+# Copyright (C) 2009 - 2011 Lennart Schulte <lennart.schulte@rwth-aachen.de>
+# Copyright (C) 2012 - 2014 Lennart Schulte <lennart.schulte@aalto.fi>
+# 
+# This program is free software; you can redistribute it and/or modify it
+# under the terms and conditions of the GNU General Public License,
+# version 2, as published by the Free Software Foundation.
 #
-# This file is part of TCPstats.
-#
-# TCPstats is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# TCPstats is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with TCPstats.  If not, see <http://www.gnu.org/licenses/>.
-#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+# more details.
 
 import logging
 

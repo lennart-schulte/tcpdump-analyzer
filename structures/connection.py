@@ -65,6 +65,7 @@ class Connection():
         self.rcv_win = []               # receiver windows for any ACK
 
         self.tput_samples = []          # samples of tput in intervals [start, end, bytes]
+        self.rtt_samples = []           # raw RTT samples for each packet
 
         if p != None:
             self.load(p)

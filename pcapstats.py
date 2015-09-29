@@ -32,6 +32,7 @@ from events.processreor import Reorder
 from events.processinterr import Interruption
 from events.processrecov import Recovery
 from events.tputsamples import TputSamples
+from events.rttsamples import RttSamples
 
 
 class ProcessPkt:
@@ -44,7 +45,8 @@ class ProcessPkt:
         self.reor   = Reorder()
         self.interr = Interruption()
         self.recov  = Recovery()
-        self.tput  = TputSamples()
+        self.tput   = TputSamples()
+        self.rtt    = RttSamples()
 
 
     def sackRetrans(self, newly_acked, half):
@@ -138,7 +140,7 @@ class ProcessPkt:
 
 
                 # not found any corresponding SACK block, insert somewhere
-                if not done and len(con.sblocks) > 0:
+                if not dtne and len(con.sblocks) > 0:
                     for j in range(len(con.sblocks)): # try to put it between two existing
                         if con.sblocks[j][0] >= sack_blocks[block+1]:
                             con.sblocks.insert(j, [sack_blocks[block],sack_blocks[block+1]])
@@ -249,10 +251,15 @@ class ProcessPkt:
 
         # new data or retransmission
         if p.seq > con.high:
+            self.rtt.addPacket(p)
+
             #store highest sent seq no
             con.high = p.seq
             con.high_len = p.tcp_data_len
         else:
+            # retransmission
+            self.rtt.rexmit(p)
+
             half = con.half
             if not con.rexmit.has_key(p.seq):
                 if half != None:
@@ -318,6 +325,9 @@ class ProcessPkt:
         self.tput.check(con, p)
 
         self.updateSackScoreboard(con, p)
+
+        # raw RTT samples
+        self.rtt.checkAck(con, p)
 
         self.reor.detectionRetrans(con, p)
         self.reor.maintainSackHoles(con, p)
@@ -395,6 +405,12 @@ class PcapInfo():
                     tputsamples.append({"start": entry[0],
                                         "end":   entry[1],
                                         "bytes": entry[2]})
+
+                # rtt
+                rttsamples = []
+                for entry in con.rtt_samples:
+                    rttsamples.append({"ts":  entry[0],
+                                       "rtt": entry[1]})
 
                 # interruptions
                 totalconinterrtime = 0
@@ -504,6 +520,7 @@ class PcapInfo():
                                                    'dextents': dreorentry,
                                                    'disorder': dphases}
                     dumpdata["tputsamples"]	= tputsamples
+                    dumpdata["rttsamples"]	= rttsamples
 
                     #print dumpdata
                     condata.append( dumpdata )
