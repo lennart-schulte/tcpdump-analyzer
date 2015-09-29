@@ -36,7 +36,6 @@ class RttSamples():
             del self.pktsent[seq]
 
     def checkAck(self, con, ack):
-        # TODO SACK
         for seq in sorted(self.pktsent):
             if seq > max(con.acked, con.sacked):
                 break
@@ -47,10 +46,12 @@ class RttSamples():
                 if b[0] > seq:
                     break
                 if seq >= b[0] and seq < b[1]:
+                    #print "SACK RTT", ack.ts, seq, ack.ts - self.pktsent[seq]
                     self.addSample(con, ack.ts, self.pktsent[seq])
                     del self.pktsent[seq]
                     done = True
 
+            # cumulative ACK
 	    if seq > ack.ack or done:
                 continue
 
@@ -61,5 +62,5 @@ class RttSamples():
         rtt = ack_ts - pkt_ts
 
         con.rtt_samples.append([ack_ts, rtt])
-        #print ts, rtt
+        #print ack_ts, rtt
 

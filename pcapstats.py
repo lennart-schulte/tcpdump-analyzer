@@ -140,7 +140,7 @@ class ProcessPkt:
 
 
                 # not found any corresponding SACK block, insert somewhere
-                if not dtne and len(con.sblocks) > 0:
+                if not done and len(con.sblocks) > 0:
                     for j in range(len(con.sblocks)): # try to put it between two existing
                         if con.sblocks[j][0] >= sack_blocks[block+1]:
                             con.sblocks.insert(j, [sack_blocks[block],sack_blocks[block+1]])
