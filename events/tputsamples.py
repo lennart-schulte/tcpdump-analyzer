@@ -23,10 +23,19 @@ class TputSamples():
         self.enable = enable
 
         self.interval   = interval # in seconds
-        self.start_time = 0        # start of interval
-        self.start_ack  = 0        # ACK pointer at start of interval
 
     def check(self, con, p):
+        # load con info
+        self.start_time = 0        # start of interval
+        self.start_ack  = 0        # ACK pointer at start of interval
+        self.high_sent  = 0        # highest sent byte at start of interval
+
+        if con.tputinfo.has_key('start_time'):
+            self.start_time = con.tputinfo['start_time']
+            self.start_ack  = con.tputinfo['start_ack']
+        if con.half and con.half.tputinfo.has_key('high_sent'):
+            self.high_sent  = con.half.tputinfo['high_sent']
+
         # current timestamp
         ts = p.ts
 
@@ -35,27 +44,55 @@ class TputSamples():
             self.start_time = ts
             self.start_ack  = max(con.acked, p.ack)
 
+            con.tputinfo['start_time'] = self.start_time
+            con.tputinfo['start_ack']  = self.start_ack
+
+        if self.high_sent == 0 and con.half != None:
+            self.high_sent = con.half.high
+
+            con.half.tputinfo['high_sent']  = self.high_sent
+
         # interval finished?
         if ts - self.start_time > self.interval:
-            # number of bytes: difference between cumACK + #SACKed
+            # cumulatively ACKed bytes
             max_acked = con.acked
-            acked = max_acked - self.start_ack
+            acked = max(max_acked - self.start_ack, 0) # SACK might move start_ack
 
+            # add SACKed bytes during this interval
+            # TODO closing SACK hole
             sacked = 0
             for s in con.sblocks:
-                sacked += s[1] - s[0] # add all SACKed bytes
+                if self.start_ack >= s[1]:
+                    continue
+                sacked += s[1] - max(self.start_ack, s[0])
+                max_acked = max(max_acked, s[1])
 
-            self.addSample(con, acked+sacked)
-            self.start_ack  = max_acked
+            self.start_ack = max_acked
+
+            # number of bytes sent
+            sent = 0
+            if con.half != None:
+                sent = con.half.high - self.high_sent
+                self.high_sent = con.half.high
+
+
+            # add intervals
+            self.addSample(con, acked+sacked, sent)
 
             while ts - self.start_time > self.interval:
-                self.addSample(con, 0)
+                self.addSample(con, 0, 0)
 
-    def addSample(self, con, acked):
+            # update con tput info
+            con.tputinfo['start_time'] = self.start_time
+            con.tputinfo['start_ack']  = self.start_ack
+            con.half.tputinfo['high_sent']  = self.high_sent
+
+
+    def addSample(self, con, acked, sent):
+
             next_time = self.start_time + self.interval
             #print next_time - self.start_time, acked
-                                          #start     end  bytes
-            con.tput_samples.append([self.start_time, next_time, acked])
+            con.tput_samples.append([self.start_time, next_time, acked, sent])
 
             self.start_time = next_time
 

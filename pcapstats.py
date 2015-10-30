@@ -207,6 +207,7 @@ class ProcessPkt:
             # first packet of connection, create new
             con = Connection(p)
             self.connections.add(con)
+            print "new con", con, con.src, con.dst
 
         if con.half == None:
             con.half = self.connections.findHalf(con)
@@ -315,7 +316,7 @@ class ProcessPkt:
         if con.rcv_wscale >= 0:
             rcv_wnd = p.win * 2**con.rcv_wscale
             if len(con.rcv_win) == 0 or con.rcv_win[-1][1] != rcv_wnd:
-                con.rcv_win.append([ts, rcv_wnd])
+                con.rcv_win.append([p.ts, rcv_wnd])
 
         # check reordering with SACK blocks
         self.reor.detectionSack(con, p)
@@ -403,7 +404,8 @@ class PcapInfo():
                 for entry in con.tput_samples:
                     tputsamples.append({"start": entry[0],
                                         "end":   entry[1],
-                                        "bytes": entry[2]})
+                                        "acked": entry[2],
+                                        "sent":  entry[3]})
 
                 # rtt
                 rttsamples = []
