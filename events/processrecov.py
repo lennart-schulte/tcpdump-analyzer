@@ -30,7 +30,6 @@ class Recovery():
                 # there haven't been any SACK blocks, now there are new incoming -> start of disorder
                 con.disorder = p.ts
                 if con.half != None and con.half.high > 0:
-                    con.recovery_point = con.half.high + con.half.high_len
                     con.flightsize = con.recovery_point - p.ack
                 logging.debug("disorder begin (new SACK blocks) %s %s %s %s", p.opts.sack_blocks, datetime.fromtimestamp(p.ts), con.recovery_point, con.flightsize)
 
@@ -42,7 +41,7 @@ class Recovery():
                 # begin and end of disorder phase, and number of frets/rtos
                 spur = (1 if con.disorder_spurrexmit == con.disorder_fret else 0)
 
-                con.disorder_phases.append([con.disorder, p.ts, con.disorder_fret, con.disorder_rto, spur,  con.disorder_spurrexmit])
+                con.disorder_phases.append([con.disorder, p.ts, con.disorder_fret, con.disorder_rto, spur,  con.disorder_spurrexmit, con.recovery_windows, con.recovery_window_size, con.recovery_point - p.ack])
 
                 con.disorder = 0
                 con.disorder_fret = 0
@@ -51,6 +50,20 @@ class Recovery():
                 con.disorder_spurrexmit = 0
                 con.flightsize = 0
                 con.recovery_point = 0
+                con.recovery_windows = 0
 
                 logging.debug("disorder end %s", datetime.fromtimestamp(p.ts))
+
+    def checkWindow(self, con):
+        if con.recovery_windows > 0 and con.acked > con.recovery_point:
+            self.setRecoveryPoint(con)
+
+    def setRecoveryPoint(self, con):
+	if not con.half:
+		return
+        con.recovery_point = con.half.high + con.half.high_len
+        con.recovery_window_size = con.recovery_point - con.acked
+        con.recovery_windows += 1
+
+        logging.debug("recovery point %s window=%s" %(con.recovery_point, con.recovery_windows))
 

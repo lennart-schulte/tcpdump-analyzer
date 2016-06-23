@@ -207,7 +207,6 @@ class ProcessPkt:
             # first packet of connection, create new
             con = Connection(p)
             self.connections.add(con)
-            print "new con", con, con.src, con.dst
 
         if con.half == None:
             con.half = self.connections.findHalf(con)
@@ -219,16 +218,18 @@ class ProcessPkt:
 
 
         # data or ACK
+        inRecovery = False
         if p.carries_data:
             self.processData(con, p)
         else:
+            if con.disorder != 0: inRecovery = True
             self.processAck(con, p)
 
         # general
-        self.processGeneral(con, p)
+        self.processGeneral(con, p, inRecovery)
 
 
-    def processGeneral(self, con, p):
+    def processGeneral(self, con, p, inRecovery):
         if p.flags.rst:
             con.rst = 1
         if p.flags.fin:
@@ -241,7 +242,12 @@ class ProcessPkt:
 
         # updated last acked packet (snd.una)
         if p.ack > con.acked:
+            if not inRecovery:
+                size = p.ack - con.acked
+                con.ack_sizes.append([p.ts, size])
+
             con.acked = p.ack
+            self.recov.checkWindow(con)
 
 
     def processData(self, con, p):
@@ -285,6 +291,8 @@ class ProcessPkt:
                     if half.disorder > 0:    # already in disorder
                         #print "in disorder"
                         if con.sblocks > 0 and half.disorder_rto == 0:
+                            if half.disorder_fret == 0:
+                                self.recov.setRecoveryPoint(half)
                             half.disorder_fret += 1
                         else:
                             half.disorder_rto += 1
@@ -313,10 +321,12 @@ class ProcessPkt:
         con.dsack += (1 if p.opts.dsack else 0)
 
         # receive window
+        factor = 0
         if con.rcv_wscale >= 0:
-            rcv_wnd = p.win * 2**con.rcv_wscale
-            if len(con.rcv_win) == 0 or con.rcv_win[-1][1] != rcv_wnd:
-                con.rcv_win.append([p.ts, rcv_wnd])
+            factor = con.rcv_wscale
+        rcv_wnd = p.win * 2**factor
+        if len(con.rcv_win) == 0 or con.rcv_win[-1][1] != rcv_wnd:
+            con.rcv_win.append([p.ts, rcv_wnd])
 
         # check reordering with SACK blocks
         self.reor.detectionSack(con, p)
@@ -413,6 +423,19 @@ class PcapInfo():
                     rttsamples.append({"ts":  entry[0],
                                        "rtt": entry[1]})
 
+                # receive window
+                rwnds = []
+                for entry in con.rcv_win:
+                    rwnds.append({"ts": entry[0],
+                                  "rwnd": entry[1]})
+
+                # ack sizes
+                acksizes = []
+                for entry in con.ack_sizes:
+                    acksizes.append({"ts": entry[0],
+                                     "size": entry[1]})
+		
+
                 # interruptions
                 totalconinterrtime = 0
                 totalconinterrno = 0
@@ -448,6 +471,9 @@ class PcapInfo():
                     rexmits = entry[2]
                     rtos = entry[3]
                     spurious = entry[4]
+                    windows = entry[6]
+                    windowsize = entry[7]
+                    remainingwindow = entry[8]
                     if rexmits:
                         totalfastrectime += duration
                         totalfastrecrexmit += rexmits
@@ -456,7 +482,7 @@ class PcapInfo():
                         if spurious:
                             totalspurious += 1
                         totalfastrecno += 1
-                        phases.append({'start': entry[0], 'duration': duration, 'rexmits': rexmits, 'rtos': rtos, 'spurious': spurious})
+                        phases.append({'start': entry[0], 'duration': duration, 'rexmits': rexmits, 'rtos': rtos, 'spurious': spurious, 'windows': windows, 'windowsize': windowsize, 'remainingwindow': remainingwindow})
                     else:
                         reorderworexmit += 1
                         logging.debug("reor 4 %s %s", datetime.fromtimestamp(entry[0]), datetime.fromtimestamp(entry[1]))
@@ -522,6 +548,8 @@ class PcapInfo():
                                                    'disorder': dphases}
                     dumpdata["tputsamples"]	= tputsamples
                     dumpdata["rttsamples"]	= rttsamples
+                    dumpdata["rwnds"]		= rwnds
+                    dumpdata["acks"]		= acksizes
 
                     #print dumpdata
                     condata.append( dumpdata )

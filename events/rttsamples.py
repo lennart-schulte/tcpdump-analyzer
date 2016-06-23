@@ -26,18 +26,27 @@ class RttSamples():
     def addPacket(self, p):
         ts = p.ts
         seq = p.seq
+        #size = p.tcp_data_len
 
-        self.pktsent[seq] = ts
+        self.pktsent[seq] = ts #(ts,size)
 
     def rexmit(self, p):
         # do not use retransmitted packets
         seq = p.seq
         if seq in self.pktsent:
             del self.pktsent[seq]
+        #else:
+        #    for s in self.pktsent.keys():
+        #        ts,size = self.pktsent[s]
+        #        if seq > s and seq < ts+size:
+        #            del self.pktsent[s]
+        #            break
+                    
 
     def checkAck(self, con, ack):
+        con_acked = max(con.acked, ack.ack)
         for seq in sorted(self.pktsent):
-            if seq > max(con.acked, con.sacked):
+            if seq > max(con_acked, con.sacked):
                 break
 
             # check SACK scoreboard
@@ -47,20 +56,22 @@ class RttSamples():
                     break
                 if seq >= b[0] and seq < b[1]:
                     #print "SACK RTT", ack.ts, seq, ack.ts - self.pktsent[seq]
-                    self.addSample(con, ack.ts, self.pktsent[seq])
+                    self.addSample(con, ack.ts, self.pktsent[seq], seq)
                     del self.pktsent[seq]
                     done = True
 
             # cumulative ACK
-	    if seq > ack.ack or done:
-                continue
+	    if seq >= ack.ack or done:
+                break
 
-            self.addSample(con, ack.ts, self.pktsent[seq])
+            self.addSample(con, ack.ts, self.pktsent[seq], seq) #[0])
             del self.pktsent[seq]
 
-    def addSample(self, con, ack_ts, pkt_ts):
+    def addSample(self, con, ack_ts, pkt_ts, seq):
         rtt = ack_ts - pkt_ts
 
+        #if rtt < 0.01:
+        #    print seq, rtt, pkt_ts, ack_ts
         con.rtt_samples.append([ack_ts, rtt])
         #print ack_ts, rtt
 

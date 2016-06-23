@@ -48,13 +48,15 @@ class Connection():
                                         #(rel.extent might be -1 for failed)
         self.reor_holes = []            # list of SACK holes, to determine beginning of reorder for reordering delay
         self.recovery_point = 0
+	self.recovery_windows = 0
+	self.recovery_window_size = 0
         self.flightsize = 0
         self.last_ts = 0                # timestamp of last processed segment (not TS-opt)
         self.interruptions = []         # for any time between two ACKs: [begin, end, #rtos, spurious?]
         self.interr_rexmits = 0         # #rexmits during interruption
         self.interr_rto_tsval = 0       # TSval of the first RTO during interruption
         self.disorder = 0               # in disorder?
-        self.disorder_phases = []       # any phase with SACKs: [begin, end, #frets, #rtos]
+        self.disorder_phases = []       # any phase with SACKs: [begin, end, #frets, #rtos, #windows, last window size, remaining window]
         self.disorder_fret = 0          # #FRets in disorder
         self.disorder_rto = 0           # #RTOs in disorder (only re-retransmissions, RTOs due to low outstanding packets and no FRet are not taken into account
         self.disorder_spurrexmit = 0    # number of spurious rexmits in the current disorder
@@ -67,6 +69,7 @@ class Connection():
         self.tput_samples = []          # samples of tput in intervals [start, end, bytes]
         self.tputinfo = dict()
         self.rtt_samples = []           # raw RTT samples for each packet
+        self.ack_sizes = []		# the amount of bytes acknowledged per ACK
 
         if p != None:
             self.load(p)

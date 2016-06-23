@@ -85,7 +85,8 @@ class TputSamples():
             # update con tput info
             con.tputinfo['start_time'] = self.start_time
             con.tputinfo['start_ack']  = self.start_ack
-            con.half.tputinfo['high_sent']  = self.high_sent
+            if con.half != None:
+                con.half.tputinfo['high_sent']  = self.high_sent
 
 
     def addSample(self, con, acked, sent):
